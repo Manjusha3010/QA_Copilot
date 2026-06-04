@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>QA Copilot — Knowledge Transfer (KT)</title>
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <link rel="stylesheet" href="kt-shared.css?v=20250604" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <span class="topbar-badge">QA Copilot · KT Documentation</span>
+      <h1>QA Copilot — Knowledge Transfer</h1>
+      <p>Run locally, understand the RAG pipeline, and debug retrieval with the explorer.</p>
+      <div class="stats">
+        <span class="pill"><b>API</b> port 8843</span>
+        <span class="pill"><b>UI</b> port 5173</span>
+        <span class="pill"><b>Release</b> v1.0.0</span>
+        <span class="pill"><b>Python</b> 3.11–3.13</span>
+      </div>
+    </div>
+  </header>
+
+  <nav class="kt-nav" aria-label="KT pages">
+    <a href="index.html" class="current">KT home</a>
+    <a href="how-to-run-locally.html">Run locally</a>
+    <a href="rag-architecture-and-explorer.html">RAG architecture &amp; explorer</a>
+  </nav>
+
+  <main>
+    <section class="card">
+      <h2>KT pages</h2>
+      <p>Open these after starting the API (see <a href="how-to-run-locally.html">How to run locally</a>).</p>
+      <div class="card-grid">
+        <a class="card-link" href="how-to-run-locally.html">
+          <h3>How to run locally</h3>
+          <p>Prerequisites, venv, <code>.env</code>, backend + frontend, reindex, troubleshooting (Python 3.14, ports).</p>
+        </a>
+        <a class="card-link" href="rag-architecture-and-explorer.html">
+          <h3>RAG architecture &amp; explorer</h3>
+          <p>Modular RAG diagrams, component map, and live <code>/api/rag/explore</code> debugger.</p>
+        </a>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Quick start (two terminals)</h2>
+      <p><strong>Terminal 1 — API</strong> (from <code>QACopilot</code> folder):</p>
+      <pre class="cmd">.\.venv\Scripts\python.exe app.py</pre>
+      <p><strong>Terminal 2 — UI</strong>:</p>
+      <pre class="cmd">cd frontend
+npm install
+npm run dev</pre>
+      <p>Then open <a href="http://127.0.0.1:5173/" target="_blank" rel="noopener">http://127.0.0.1:5173/</a> (Chat · RAG Explorer · Status) or
+        <a href="http://127.0.0.1:8843/kt/" target="_blank" rel="noopener">http://127.0.0.1:8843/kt/</a> (these KT pages).</p>
+    </section>
+  </main>
+
+  <footer>QA Copilot · The Testing Academy–style KT · <a href="https://app.thetestingacademy.com/rag" target="_blank" rel="noopener">RAG tutorial</a></footer>
+</body>
+</html>

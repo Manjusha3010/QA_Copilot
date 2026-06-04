@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>QA Copilot — How to run locally | KT</title>
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <link rel="stylesheet" href="kt-shared.css?v=20250604" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <span class="topbar-badge">Setup · Windows · v1.0.0</span>
+      <h1>How to run QA Copilot locally</h1>
+      <p>Step-by-step setup on Windows: Python venv, Groq API, backend API, React UI, data paths, and reindex.</p>
+      <div class="stats">
+        <span class="pill"><b>API</b> :8843</span>
+        <span class="pill"><b>UI</b> :5173</span>
+        <span class="pill"><b>Python</b> 3.11–3.13 only</span>
+      </div>
+    </div>
+  </header>
+
+  <nav class="kt-nav" aria-label="KT pages">
+    <a href="index.html">KT home</a>
+    <a href="how-to-run-locally.html" class="current">Run locally</a>
+    <a href="rag-architecture-and-explorer.html">RAG architecture &amp; explorer</a>
+  </nav>
+
+  <main>
+    <section class="card" id="prerequisites">
+      <h2><span class="tag">Step 0</span> Prerequisites</h2>
+      <table class="comp">
+        <thead>
+          <tr><th>Requirement</th><th>Notes</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Python 3.11, 3.12, or 3.13</strong></td>
+            <td>Do <strong>not</strong> use Python 3.14 for this project — <code>qdrant-client</code> / protobuf fail with <em>Metaclasses with custom tp_new</em>.</td>
+          </tr>
+          <tr>
+            <td><strong>Node.js + npm</strong></td>
+            <td>For the React + Vite UI (<code>frontend/</code>).</td>
+          </tr>
+          <tr>
+            <td><strong>Groq API key</strong></td>
+            <td>Create one at <a href="https://console.groq.com/" target="_blank" rel="noopener">console.groq.com</a> and put it in <code>.env</code>.</td>
+          </tr>
+          <tr>
+            <td><strong>Disk space</strong></td>
+            <td>First run downloads BGE-M3 and reranker models (several GB).</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="callout warn">
+        <strong>Ports:</strong> This project uses <strong>8843</strong> for the API (not 8000 or 8500, which you may already use for other apps).
+        The dev UI uses <strong>5173</strong>.
+      </div>
+    </section>
+
+    <section class="card" id="first-time">
+      <h2><span class="tag">Step 1</span> First-time setup (once per machine)</h2>
+      <p>Open PowerShell and go to the project folder:</p>
+      <pre class="cmd">cd "D:\manjusha\AITester2xBlueprint\QACopilot\QACopilot"</pre>
+      <p>Create a Python 3.11 virtual environment and install dependencies:</p>
+      <pre class="cmd">py -3.11 -m venv .venv
+.\.venv\Scripts\activate
+python -m pip install --upgrade pip
+pip install -r requirements.txt</pre>
+      <p>Copy environment template and add your Groq key:</p>
+      <pre class="cmd">copy .env.example .env
+notepad .env</pre>
+      <p>Set at minimum:</p>
+      <pre class="cmd">GROQ_API_KEY=your_key_here</pre>
+      <h3>Data paths in <code>.env</code></h3>
+      <p>The backend reads these names (not the old <code>COPILOT_PATH_*</code> names):</p>
+      <table class="comp">
+        <thead>
+          <tr><th>Variable</th><th>Default in this repo</th><th>Indexed into</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>PDFS_DIR</code></td><td><code>./data/PDF</code></td><td><code>vwo_docs</code></td></tr>
+          <tr><td><code>JIRA_MD_DIR</code></td><td><code>./data/MD</code></td><td><code>vwo_bugs</code></td></tr>
+          <tr><td><code>TESTCASES_CSV</code></td><td><code>./data/CSV/testcases_vwo_100.csv</code></td><td><code>vwo_testcases</code></td></tr>
+          <tr><td><code>SELENIUM_REPO_DIR</code></td><td><code>./data/repos/ATB14xSeleniumAdvanceFrameworks</code></td><td><code>selenium_code</code></td></tr>
+          <tr><td><code>PLAYWRIGHT_REPO_DIR</code></td><td><code>./data/repos/Advance-Playwright-Framework</code></td><td><code>playwright_code</code></td></tr>
+        </tbody>
+      </table>
+      <p>Optional: change API port if 8843 is busy:</p>
+      <pre class="cmd">QACOPILOT_API_PORT=8843</pre>
+    </section>
+
+    <section class="card" id="run-api">
+      <h2><span class="tag">Step 2</span> Start the API (terminal 1)</h2>
+      <p>Always use the <strong>venv</strong> Python — not system <code>python</code> if that is 3.14.</p>
+      <pre class="cmd">cd "D:\manjusha\AITester2xBlueprint\QACopilot\QACopilot"
+.\.venv\Scripts\activate
+python app.py</pre>
+      <p>Or use the helper script:</p>
+      <pre class="cmd">.\start.ps1</pre>
+      <div class="callout ok">
+        When it works you should see: <code>Uvicorn running on http://0.0.0.0:8843</code>
+      </div>
+      <h3>Verify API</h3>
+      <table class="comp">
+        <thead><tr><th>URL</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr><td><a href="http://127.0.0.1:8843/api/health" target="_blank" rel="noopener">http://127.0.0.1:8843/api/health</a></td><td>Collection chunk counts</td></tr>
+          <tr><td><a href="http://127.0.0.1:8843/docs" target="_blank" rel="noopener">http://127.0.0.1:8843/docs</a></td><td>Swagger API docs</td></tr>
+          <tr><td><a href="http://127.0.0.1:8843/kt/" target="_blank" rel="noopener">http://127.0.0.1:8843/kt/</a></td><td>These KT HTML pages</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="card" id="run-ui">
+      <h2><span class="tag">Step 3</span> Start the UI (terminal 2)</h2>
+      <p>Leave the API running. Open a <strong>second</strong> PowerShell window:</p>
+      <pre class="cmd">cd "D:\manjusha\AITester2xBlueprint\QACopilot\QACopilot"
+.\start-ui.ps1</pre>
+      <p>Or: <code>cd frontend</code> then <code>npm install</code> and <code>npm run dev</code>.</p>
+      <p>Open the app:</p>
+      <pre class="cmd">http://localhost:5173/</pre>
+      <p>Vite proxies <code>/api</code> to <code>http://127.0.0.1:8843</code>. If you changed the API port, create <code>frontend/.env</code>:</p>
+      <pre class="cmd">VITE_API_PROXY=http://127.0.0.1:YOUR_PORT</pre>
+    </section>
+
+    <section class="card" id="wizard">
+      <h2><span class="tag">Step 4</span> Wizard, paths, and reindex</h2>
+      <ol class="steps">
+        <li>Open <strong>http://localhost:5173/</strong> → <strong>Status</strong> → set data paths and save (<code>local_paths.json</code>).</li>
+        <li>Confirm folders exist: <code>data/PDF</code>, <code>data/MD</code>, <code>data/CSV/testcases_vwo_100.csv</code>, and cloned repos under <code>data/repos/</code>.</li>
+        <li>Click <strong>Reindex all</strong> in the co-pilot UI (or call <code>POST /api/ingest/all</code> from Swagger).</li>
+        <li>First reindex is slow (model load + embedding). Check <code>/api/health</code> — counts should be &gt; 0.</li>
+        <li>Ask a question in the co-pilot view, or use the <a href="rag-architecture-and-explorer.html">RAG explorer</a> to debug retrieval.</li>
+      </ol>
+    </section>
+
+    <section class="card" id="data-layout">
+      <h2><span class="tag">Reference</span> Data folder layout</h2>
+      <pre class="cmd">QACopilot/
+  .env                 # secrets + paths
+  .venv/               # Python 3.11 environment
+  app.py               # start API
+  start.ps1            # Windows helper
+  data/
+    PDF/               # PRDs → vwo_docs
+    MD/                # JIRA markdown → vwo_bugs
+    CSV/
+      testcases_vwo_100.csv  → vwo_testcases
+    repos/
+      ATB14xSeleniumAdvanceFrameworks/   → selenium_code
+      Advance-Playwright-Framework/        → playwright_code
+  frontend/            # React UI
+  KT/                  # this documentation</pre>
+    </section>
+
+    <section class="card" id="troubleshooting">
+      <h2><span class="tag">Troubleshooting</span></h2>
+      <h3>Metaclasses / protobuf error on <code>python app.py</code></h3>
+      <div class="callout err">
+        You are on <strong>Python 3.14</strong>. Use <code>.\.venv\Scripts\python.exe app.py</code> or activate <code>.venv</code> first.
+      </div>
+      <h3><code>127.0.0.1:5173</code> — connection refused</h3>
+      <div class="callout err">
+        The Vite dev server is not running. Run <code>npm run dev</code> in <code>frontend/</code> (terminal 2).
+      </div>
+      <h3>UI cannot reach API / wizard errors</h3>
+      <p>Ensure terminal 1 still has the API on port <strong>8843</strong>. Test <a href="http://127.0.0.1:8843/api/health" target="_blank" rel="noopener">/api/health</a> in the browser.</p>
+      <h3>PDF / CSV not indexed</h3>
+      <p>Check <code>.env</code> uses <code>PDFS_DIR</code> and <code>TESTCASES_CSV</code> (not commented <code>COPILOT_PATH_*</code>). Restart API after editing <code>.env</code>, then reindex.</p>
+      <h3>All collection counts are 0</h3>
+      <p>Run <strong>Reindex all</strong> after paths are set. Ensure files exist at the paths in <code>/api/meta</code> or the wizard.</p>
+    </section>
+
+    <section class="card">
+      <h2>Next</h2>
+      <p>
+        <a href="rag-architecture-and-explorer.html">RAG architecture &amp; explorer</a> —
+        diagrams, components, and live debug via <code>POST /api/rag/explore</code>.
+      </p>
+    </section>
+  </main>
+
+  <footer>QA Copilot · KT · <a href="index.html">Back to KT home</a></footer>
+</body>
+</html>

@@ -1,0 +1,27 @@
+.env
+.env.*
+!.env.example
+!frontend/.env.example
+local_paths.json
+qdrant_storage/
+qdrant_data/
+__pycache__/
+*.pyc
+.venv/
+frontend/node_modules/
+frontend/dist/
+frontend/public/kt/
+
+# Large clones (see data/repos/README.md)
+data/repos/ATB14xSeleniumAdvanceFrameworks/
+data/repos/Advance-Playwright-Framework/
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

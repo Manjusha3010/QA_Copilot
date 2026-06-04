@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>QA Copilot &mdash; RAG architecture &amp; explorer | KT</title>
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <link rel="stylesheet" href="kt-shared.css?v=20250604" />
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <span class="topbar-badge">RAG Explorer &middot; Modular pipeline</span>
+      <h1>QA Copilot &mdash; RAG architecture &amp; explorer</h1>
+      <p>Knowledge transfer page: how this project builds Modular RAG, live trace debugger, and stack map.</p>
+      <div class="stats">
+        <span class="pill"><b>5</b> collections</span>
+        <span class="pill"><b>Hybrid</b> dense + sparse</span>
+        <span class="pill"><b>RRF</b> fusion</span>
+        <span class="pill"><b>Groq</b> router + gen</span>
+      </div>
+    </div>
+  </header>
+
+  <nav class="toc" aria-label="Page sections">
+    <a href="index.html">KT home</a>
+    <a href="how-to-run-locally.html">Run locally</a>
+    <span>|</span>
+    <a href="#section-1">1 ? Architecture</a>
+    <a href="#section-2">2 ? RAG explorer</a>
+    <a href="#section-3">3 ? Components</a>
+  </nav>
+
+  <main>
+    <!-- ========== SECTION 1 ========== -->
+    <section class="card" id="section-1">
+      <h2><span class="tag">Section 1</span> Full RAG diagram ? how this system is built</h2>
+      <p>
+        This QA Copilot implements a <strong>Modular RAG</strong> pipeline (as in
+        <a href="https://app.thetestingacademy.com/rag#modular" target="_blank" rel="noopener">The Testing Academy ? Modular RAG</a>):
+        separate modules for <em>ingestion / indexing</em>, <em>query rewrite</em>, <em>routing</em>,
+        <em>retrieval</em>, <em>reranking</em>, and <em>generation</em>. Data lives in five Qdrant collections
+        with <strong>dense (BGE-M3)</strong> and <strong>sparse (lexical)</strong> vectors; at query time Qdrant
+        prefetches both branches and fuses with <strong>RRF</strong> before a cross-encoder reranker and Groq.
+      </p>
+
+      <h3>Indexing pipeline (offline)</h3>
+      <p>Source files are chunked, embedded with BGE-M3 (dense + sparse), and upserted into the matching collection.</p>
+      <div class="mermaid">
+flowchart TB
+  subgraph INGEST["Ingestion (per source)"]
+    S["Selenium repo<br/>.java"] --> CS["chunk_java_file"]
+    P["Playwright repo<br/>.ts/.js"] --> CP["chunk TS/JS"]
+    CSV["testcases CSV"] --> CT["row-aware chunks"]
+    PDF["PDF folder"] --> CPDF["PyMuPDF pages"]
+    MD["JIRA markdown"] --> CMD["header-aware chunks"]
+    CS --> E["BGE-M3 encode_batch"]
+    CP --> E
+    CT --> E
+    CPDF --> E
+    CMD --> E
+    E --> U["upsert_hybrid_batch"]
+    U --> Q1[("Qdrant: selenium_code")]
+    U --> Q2[("Qdrant: playwright_code")]
+    U --> Q3[("Qdrant: vwo_testcases")]
+    U --> Q4[("Qdrant: vwo_docs")]
+    U --> Q5[("Qdrant: vwo_bugs")]
+  end
+      </div>
+
+      <h3>Query pipeline (online)</h3>
+      <p>Optional multi-turn rewrite, Groq router picks 1?2 collections, hybrid search per collection, merge/dedupe, BGE reranker, then Groq answer with inline citations.</p>
+      <div class="mermaid">
+flowchart LR
+  UQ["User question"] --> H{"History?"}
+  H -->|yes| RW["Groq: rewrite_query"]
+  H -->|no| Q0["Search query"]
+  RW --> Q0
+  Q0 --> R["Groq: route_collections"]
+  R --> E2["BGE-M3: encode_query"]
+  E2 --> HS["Per collection:<br/>hybrid_search"]
+  HS --> M["Merge + dedupe + sort RRF"]
+  M --> RR["BGE reranker"]
+  RR --> TOP["Top-k chunks"]
+  TOP --> G["Groq: answer + citations"]
+      </div>
+
+      <h3>End-to-end (index + query)</h3>
+      <div class="mermaid">
+flowchart TB
+  subgraph DATA["Your data"]
+    d1[Selenium Java]
+    d2[Playwright TS]
+    d3[CSV cases]
+    d4[PDFs / PRDs]
+    d5[JIRA MD]
+  end
+  subgraph IDX["Indexing API POST /api/ingest"]
+    ix[ingest_all: 5 ingesters]
+  end
+  subgraph QDR[("Qdrant local or URL")]
+    c1[selenium_code]
+    c2[playwright_code]
+    c3[vwo_testcases]
+    c4[vwo_docs]
+    c5[vwo_bugs]
+  end
+  subgraph QRY["Query API POST /api/query or /api/chat or /api/rag/explore"]
+    q1[Rewrite]
+    q2[Router]
+    q3[Hybrid RRF]
+    q4[Rerank]
+    q5[Generate]
+  end
+  d1 & d2 & d3 & d4 & d5 --> ix --> c1 & c2 & c3 & c4 & c5
+  c1 & c2 & c3 & c4 & c5 --> q3
+  q1 --> q2 --> q3 --> q4 --> q5
+      </div>
+    </section>
+
+    <!-- ========== SECTION 2 ========== -->
+    <section class="card" id="section-2">
+      <h2><span class="tag">Section 2</span> RAG explorer (debugger)</h2>
+      <p>
+        Run a query against a live API. The explorer calls <code>POST /api/rag/explore</code> and shows
+        <strong>which collections were routed</strong>, <strong>hits per collection</strong>, the <strong>rerank pool</strong>,
+        <strong>final chunks</strong> sent to the LLM, the <strong>composed prompt</strong> (truncated if huge), and the
+        <strong>model answer</strong> ? plus a plain-English list of pipeline steps so you can teach ?how the output came to be.?
+      </p>
+      <p><strong>Serve this page from the API host</strong> (recommended): start the backend, then open
+        <code>http://127.0.0.1:8843/kt/rag-architecture-and-explorer.html</code> ? then you can leave ?API base URL? empty to use the same origin.
+        If you open the file directly from disk, set the base URL explicitly (e.g. <code>http://127.0.0.1:8843</code>).</p>
+
+      <div class="explorer-grid">
+        <div>
+          <label for="apiBase">API base URL (empty = same origin as this page)</label>
+          <input id="apiBase" type="text" placeholder="http://127.0.0.1:8843" autocomplete="off" />
+        </div>
+        <div>
+          <label for="histJson">Optional history JSON (OpenAI-style messages)</label>
+          <input id="histJson" type="text" placeholder='[{"role":"user","content":"?"}]' />
+        </div>
+      </div>
+      <label for="q">Query</label>
+      <textarea id="q" placeholder="e.g. How does the Playwright base fixture handle storage state?"></textarea>
+      <div class="btn-row">
+        <button type="button" class="primary" id="btnRun">Run explorer</button>
+        <button type="button" class="secondary" id="btnSame">Use same origin</button>
+      </div>
+      <div id="exStatus"></div>
+      <div id="exOut"></div>
+    </section>
+
+    <!-- ========== SECTION 3 ========== -->
+    <section class="card" id="section-3">
+      <h2><span class="tag">Section 3</span> Components used in this project</h2>
+      <p>Each layer is swappable (Modular RAG): you can change models, add parsers, or extend retrieval without rewriting the whole stack.</p>
+      <table class="comp">
+        <thead>
+          <tr>
+            <th>Component</th>
+            <th>Role</th>
+            <th>Technology / location</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>API server</strong></td>
+            <td>HTTP routes for health, meta, paths, ingest, query, SSE chat, RAG explore; optional static UI.</td>
+            <td><code>FastAPI</code> ? <code>backend/main.py</code>, <code>app.py</code></td>
+          </tr>
+          <tr>
+            <td><strong>Vector database</strong></td>
+            <td>Stores chunk payloads + named dense and sparse vectors per collection.</td>
+            <td><code>Qdrant</code> ? <code>backend/lib/qdrant_store.py</code></td>
+          </tr>
+          <tr>
+            <td><strong>Embeddings</strong></td>
+            <td>Produces 1024-d dense vectors and lexical sparse weights for every chunk and query.</td>
+            <td><code>FlagEmbedding BGEM3FlagModel</code> ? <code>backend/lib/embeddings.py</code></td>
+          </tr>
+          <tr>
+            <td><strong>Hybrid retrieval</strong></td>
+            <td>Prefetch dense top-N and sparse top-N, fuse with RRF; fallback to dense-only if fusion fails.</td>
+            <td><code>qdrant_client</code> <code>query_points</code> + <code>Fusion.RRF</code></td>
+          </tr>
+          <tr>
+            <td><strong>Router</strong></td>
+            <td>Selects 1?2 collections per question (or user override / fallback to all).</td>
+            <td><code>Groq</code> JSON classifier ? <code>backend/lib/router.py</code></td>
+          </tr>
+          <tr>
+            <td><strong>Query rewrite</strong></td>
+            <td>Turns follow-up questions into standalone search queries using recent turns.</td>
+            <td><code>Groq</code> ? <code>backend/lib/prompts.py</code></td>
+          </tr>
+          <tr>
+            <td><strong>Reranker</strong></td>
+            <td>Cross-encoder scores query?passage pairs to reorder the merged pool.</td>
+            <td><code>FlagEmbedding FlagReranker</code> ? <code>backend/lib/reranker.py</code></td>
+          </tr>
+          <tr>
+            <td><strong>Generator</strong></td>
+            <td>Grounded answer with <code>&lt;doc&gt;</code> context and numeric citations.</td>
+            <td><code>Groq</code> chat completions ? <code>backend/lib/retriever.py</code>, prompts in <code>prompts.py</code></td>
+          </tr>
+          <tr>
+            <td><strong>Ingestion</strong></td>
+            <td>Walk repos / files, chunk, embed, upsert per collection.</td>
+            <td><code>backend/ingest/*.py</code>, <code>backend/lib/chunking_*.py</code></td>
+          </tr>
+          <tr>
+            <td><strong>RAG explorer</strong></td>
+            <td>Serializes the full retrieval trace for debugging and teaching.</td>
+            <td><code>POST /api/rag/explore</code> ? <code>backend/lib/rag_explore.py</code> + this HTML</td>
+          </tr>
+          <tr>
+            <td><strong>Operator UI</strong></td>
+            <td>Chat, Status paths, reindex, RAG explorer (production co-pilot).</td>
+            <td><code>React + Vite</code> ? <code>frontend/</code></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+  </main>
+
+  <footer>
+    QA Copilot &middot; KT docs &middot; <a href="http://127.0.0.1:5173/" target="_blank" rel="noopener">Open app</a> &middot; <a href="https://app.thetestingacademy.com/rag#modular" target="_blank" rel="noopener">RAG tutorial</a>
+  </footer>
+
+  <script>
+    mermaid.initialize({ startOnLoad: true, theme: "dark", securityLevel: "loose" });
+
+    function apiRoot() {
+      const v = document.getElementById("apiBase").value.trim();
+      if (v) return v.replace(/\/+$/, "");
+      if (location.protocol === "file:") return "http://127.0.0.1:8843";
+      return location.origin;
+    }
+
+    document.getElementById("btnSame").addEventListener("click", function () {
+      document.getElementById("apiBase").value = "";
+    });
+
+    function esc(s) {
+      return String(s == null ? "" : s)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+    }
+
+    function renderExplore(data) {
+      const parts = [];
+      parts.push("<h3>Pipeline (how the answer was produced)</h3><ol>");
+      (data.pipeline_steps_explained || []).forEach(function (s) {
+        parts.push("<li>" + esc(s) + "</li>");
+      });
+      parts.push("</ol>");
+
+      parts.push("<h3>Rewrite &amp; router</h3>");
+      parts.push("<p><strong>Original:</strong> " + esc(data.query_original) + "</p>");
+      parts.push("<p><strong>Rewritten search query:</strong> " + esc(data.query_rewritten) + "</p>");
+      parts.push("<p><strong>Collections:</strong> <code>" + esc((data.router_collections || []).join(", ")) + "</code></p>");
+      parts.push("<p><strong>Router fallback (all collections):</strong> " + esc(String(data.router_fallback_all_collections)) + "</p>");
+      parts.push("<p><strong>Router raw:</strong></p><pre>" + esc(data.router_raw_llm) + "</pre>");
+
+      parts.push("<h3>Counts</h3><pre>" + esc(JSON.stringify(data.counts, null, 2)) + "</pre>");
+
+      parts.push("<h3>Hits per collection (after hybrid RRF in Qdrant)</h3>");
+      const pch = data.per_collection_hits || {};
+      Object.keys(pch).forEach(function (col) {
+        parts.push("<h4>" + esc(col) + " (" + pch[col].length + ")</h4>");
+        pch[col].forEach(function (h, i) {
+          parts.push(
+            '<div class="chunk-card"><small>#' +
+              (i + 1) +
+              " ? score " +
+              esc(h.hybrid_rrf_score) +
+              (h.path ? " ? " + esc(h.path) : "") +
+              "</small><pre>" +
+              esc(h.text_preview) +
+              "</pre></div>"
+          );
+        });
+      });
+
+      parts.push("<h3>Rerank pool (after dedupe, RRF sort, trim)</h3>");
+      parts.push("<pre>" + esc(JSON.stringify(data.rerank_scores_table, null, 2)) + "</pre>");
+
+      parts.push("<h3>Final chunks to LLM</h3>");
+      (data.final_chunks || []).forEach(function (h, i) {
+        parts.push(
+          '<div class="chunk-card"><small>doc #' +
+            (i + 1) +
+            " ? rerank " +
+            esc(h.rerank_score) +
+            "</small><pre>" +
+            esc((h.full_text || "").slice(0, 6000)) +
+            ((h.full_text || "").length > 6000 ? "\n?" : "") +
+            "</pre></div>"
+        );
+      });
+
+      parts.push("<h3>Prompts</h3>");
+      parts.push("<p><strong>System</strong></p><pre>" + esc(data.prompt_system) + "</pre>");
+      parts.push("<p><strong>User (may be truncated server-side)</strong></p><pre>" + esc(data.prompt_user) + "</pre>");
+
+      parts.push("<h3>LLM answer</h3>");
+      parts.push("<pre>" + esc(data.answer) + "</pre>");
+      parts.push("<h3>Citations payload</h3><pre>" + esc(JSON.stringify(data.citations, null, 2)) + "</pre>");
+      return parts.join("");
+    }
+
+    document.getElementById("btnRun").addEventListener("click", async function () {
+      const status = document.getElementById("exStatus");
+      const out = document.getElementById("exOut");
+      out.innerHTML = "";
+      status.innerHTML = "";
+      const q = document.getElementById("q").value.trim();
+      if (!q) {
+        status.innerHTML = '<p class="err">Enter a query.</p>';
+        return;
+      }
+      let history = [];
+      const rawH = document.getElementById("histJson").value.trim();
+      if (rawH) {
+        try {
+          history = JSON.parse(rawH);
+          if (!Array.isArray(history)) throw new Error("history must be a JSON array");
+        } catch (e) {
+          status.innerHTML = '<p class="err">Invalid history JSON: ' + esc(e.message) + "</p>";
+          return;
+        }
+      }
+      const root = apiRoot();
+      status.innerHTML = "<p>Calling <code>" + esc(root + "/api/rag/explore") + "</code>?</p>";
+      try {
+        const res = await fetch(root + "/api/rag/explore", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ query: q, sources: null, history: history }),
+        });
+        const text = await res.text();
+        let data;
+        try {
+          data = JSON.parse(text);
+        } catch {
+          throw new Error(text.slice(0, 400));
+        }
+        if (!res.ok) throw new Error(data.detail || text.slice(0, 400));
+        status.innerHTML = '<p class="ok">Trace loaded.</p>';
+        out.innerHTML = renderExplore(data);
+      } catch (e) {
+        status.innerHTML = '<p class="err">' + esc(e.message) + "</p>";
+      }
+    });
+  </script>
+</body>
+</html>
