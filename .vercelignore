@@ -1,0 +1,10 @@
+.venv
+qdrant_storage
+qdrant_data
+frontend/node_modules
+frontend/dist
+**/__pycache__
+*.pyc
+.env
+local_paths.json
+data/repos
